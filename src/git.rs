@@ -3,7 +3,7 @@ use colored::Colorize;
 use std::process::Command;
 
 /// Size threshold for splitting diffs (in characters)
-const DIFF_SIZE_THRESHOLD: usize = 8000;
+const DIFF_SIZE_THRESHOLD: usize = 80000;
 /// Maximum number of split attempts
 const MAX_SPLIT_ATTEMPTS: usize = 4;
 

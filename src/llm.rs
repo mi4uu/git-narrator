@@ -61,6 +61,10 @@ fn filter_unwanted_lines(content: &str) -> String {
         "updates:",
         "alterations:",
         "revisions:",
+        "commit message",
+        "Sure,",
+        "```diff",
+        "```",
         // Common LLM meta-commentary starters
         "based on",
         "according to",
