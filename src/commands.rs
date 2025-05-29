@@ -1,9 +1,10 @@
 use crate::cli::{Commands, ConfigCommands};
 use crate::config::Config;
+use crate::emotes;
 use crate::git;
 use crate::llm;
 use crate::ui;
-use anyhow::{Context, Result};
+use color_eyre::eyre::{eyre, Context, Result};
 use colored::Colorize;
 use std::env;
 use std::fs;
@@ -31,7 +32,7 @@ pub async fn generate_commit(
             .context("Failed to stage changes with git add")?;
 
         if !status.success() {
-            return Err(anyhow::anyhow!("Failed to stage changes with git add"));
+            return Err(eyre!("Failed to stage changes with git add"));
         }
     }
 
@@ -63,21 +64,78 @@ pub async fn generate_commit(
 
     // Print configuration information
     println!("{} {}", "🤖 Using model:".blue(), model_name.bright_blue());
-    println!("{}", "✨ Generating commit message...".blue());
 
-    // Generate commit message
-    let commit_message = llm::generate_commit_message(
-        &diff,
-        &system_prompt,
-        &user_prompt,
-        api_token,
-        &api_base_url,
-        &model_name,
-    )
-    .await?;
+    // Check if diff needs splitting
+    let commit_message = if git::needs_splitting(&diff) {
+        println!("{}", "📊 Large diff detected, splitting into chunks...".yellow());
+        
+        // Split the diff
+        let split_result = git::split_large_diff(&diff)
+            .context("Failed to split large diff")?;
+        
+        println!(
+            "{} Split diff into {} chunks using {} method",
+            "✂️".blue(),
+            split_result.chunks.len(),
+            split_result.split_method
+        );
+
+        // Generate commit messages for each chunk
+        let mut chunk_messages = Vec::new();
+        for (i, chunk) in split_result.chunks.iter().enumerate() {
+            println!(
+                "{} Generating message for chunk {} ({})...",
+                "✨".blue(),
+                i + 1,
+                chunk.description
+            );
+            
+            let chunk_message = llm::generate_commit_message(
+                &chunk.content,
+                &system_prompt,
+                &user_prompt,
+                api_token,
+                &api_base_url,
+                &model_name,
+            )
+            .await
+            .context(format!("Failed to generate message for chunk {}", i + 1))?;
+            
+            chunk_messages.push(chunk_message);
+        }
+
+        // Combine the messages
+        println!("{}", "🔗 Combining chunk messages into final commit message...".blue());
+        llm::combine_commit_messages(
+            chunk_messages,
+            &system_prompt,
+            api_token,
+            &api_base_url,
+            &model_name,
+        )
+        .await
+        .context("Failed to combine commit messages")?
+    } else {
+        println!("{}", "✨ Generating commit message...".blue());
+        
+        // Generate commit message normally for small diffs
+        llm::generate_commit_message(
+            &diff,
+            &system_prompt,
+            &user_prompt,
+            api_token,
+            &api_base_url,
+            &model_name,
+        )
+        .await?
+    };
+
+    // Add emote to the commit message based on categorization
+    println!("{}", "🎨 Adding emote based on commit category...".blue());
+    let commit_message_with_emote = emotes::process_commit_message(&commit_message);
 
     // Format git commit command for display
-    let escaped_message = commit_message.replace("\"", "\\\"");
+    let escaped_message = commit_message_with_emote.replace("\"", "\\\"");
     let commit_command = format!("git commit -m \"{}\"", escaped_message);
 
     // Only print the command, not the message again
@@ -85,13 +143,13 @@ pub async fn generate_commit(
     println!("{}", commit_command.bright_white());
 
     if auto_commit {
-        execute_commit(&commit_message)?;
+        execute_commit(&commit_message_with_emote)?;
         // Push changes if auto_push is enabled
         if auto_push {
             git::push_changes()?;
         }
     } else {
-        handle_commit_options(&commit_message, auto_push)?;
+        handle_commit_options(&commit_message_with_emote, auto_push)?;
     }
 
     Ok(())
@@ -219,7 +277,7 @@ fn edit_commit_message(commit_message: &str) -> Result<String> {
         .context(format!("Failed to open editor ({})", editor))?;
 
     if !edit_status.success() {
-        return Err(anyhow::anyhow!("Editor exited with non-zero status"));
+        return Err(eyre!("Editor exited with non-zero status"));
     }
 
     // Read the modified message
@@ -473,7 +531,7 @@ mod tests {
             .output()
             .unwrap();
 
-        let status: std::result::Result<(), anyhow::Error> = execute_commit("Test commit message");
+        let status: std::result::Result<(), color_eyre::eyre::Error> = execute_commit("Test commit message");
         assert!(status.is_ok());
     }
 

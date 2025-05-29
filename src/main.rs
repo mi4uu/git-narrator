@@ -1,16 +1,20 @@
 mod cli;
 mod commands;
 mod config;
+mod emotes;
 mod git;
 mod llm;
 mod ui;
 
-use anyhow::Result;
+use color_eyre::eyre::Result;
+
 use cli::parse_args;
 use config::Config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    color_eyre::install()?;
+
     // Load configuration
     let config = Config::load()?;
 

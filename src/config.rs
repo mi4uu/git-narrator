@@ -1,18 +1,31 @@
-use anyhow::{Context, Result};
+use color_eyre::eyre::{eyre, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-
+use color_eyre::eyre::ContextCompat;
 const DEFAULT_SYSTEM_PROMPT: &str = "You are an expert at writing clear and concise commit messages. \
     Follow these rules strictly:\n\n\
-    1. Start with a type: feat, fix, docs, style, refactor, perf, test, build, ci, chore, or revert\n\
+    1. ALWAYS start with a conventional commit type: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert, security, or deps\n\
     2. Add a scope in parentheses when the change affects a specific component/module\n\
     3. Write a brief description in imperative mood (e.g., 'add' not 'added')\n\
     4. Keep the first line under 72 characters\n\
-    5. For simple changes (single file, small modifications), use only the subject line\n\
-    6. For complex changes (multiple files, new features, breaking changes):\n\
+    5. Use these specific types for better categorization:\n\
+       - feat: new features or enhancements\n\
+       - fix: bug fixes and error corrections\n\
+       - docs: documentation changes\n\
+       - style: formatting, whitespace, code style\n\
+       - refactor: code restructuring without functionality changes\n\
+       - perf: performance improvements\n\
+       - test: adding or updating tests\n\
+       - build: build system, dependencies, tooling\n\
+       - ci: continuous integration, workflows\n\
+       - chore: maintenance, housekeeping\n\
+       - security: security fixes and improvements\n\
+       - deps: dependency updates\n\
+    6. For simple changes (single file, small modifications), use only the subject line\n\
+    7. For complex changes (multiple files, new features, breaking changes):\n\
        - Add a body explaining what and why\n\
        - Use numbered points (1., 2., 3., etc.) to list distinct changes\n\
        - Organize points in order of importance\n\
@@ -23,15 +36,30 @@ const DEFAULT_SYSTEM_PROMPT: &str = "You are an expert at writing clear and conc
     1. Implement Google and GitHub OAuth2 providers\n\
     2. Create secure token storage and refresh mechanism\n\
     3. Add middleware for protected route authentication\n\
-    4. Update user model to store OAuth identifiers";
+    4. Update user model to store OAuth identifiers\n\n\
+    IMPORTANT: Always use conventional commit format to enable automatic categorization and emote assignment.";
 
 const DEFAULT_USER_PROMPT: &str =
-    "Generate a commit message for the following changes. First analyze the complexity of the diff.\n\n\
-    For simple changes, provide only a subject line.\n\n\
+    "Generate a commit message for the following changes using conventional commit format. \
+    First analyze the complexity and type of changes in the diff.\n\n\
+    REQUIRED: Start with the appropriate type (feat, fix, docs, style, refactor, perf, test, build, ci, chore, security, deps) \
+    followed by optional scope and description.\n\n\
+    For simple changes, provide only a subject line in format: type(scope): description\n\n\
     For complex changes, include a body with numbered points (1., 2., 3.) that clearly outline\n\
     each distinct modification or feature. Organize these points by importance.\n\n\
-    Look for patterns like new features, bug fixes, or configuration changes to determine\n\
-    the appropriate type and scope:\n\n\
+    Analyze the diff to determine the most appropriate commit type:\n\
+    - New functionality = feat\n\
+    - Bug fixes = fix\n\
+    - Documentation = docs\n\
+    - Code formatting/style = style\n\
+    - Code restructuring = refactor\n\
+    - Performance improvements = perf\n\
+    - Tests = test\n\
+    - Build/tooling = build\n\
+    - CI/workflows = ci\n\
+    - Maintenance = chore\n\
+    - Security fixes = security\n\
+    - Dependencies = deps\n\n\
     ```diff\n{}\n```";
 
 const PROJECT_CONFIG_FILENAME: &str = ".git-narrator.toml";
@@ -196,7 +224,7 @@ impl Config {
             "model" => self.model = value,
             "system_prompt" => self.system_prompt = value,
             "user_prompt" => self.user_prompt = value,
-            _ => return Err(anyhow::anyhow!("Unknown configuration key: {}", key)),
+            _ => return Err(eyre!("Unknown configuration key: {}", key)),
         }
 
         self.save()?;
