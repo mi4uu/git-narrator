@@ -62,9 +62,11 @@ fn filter_unwanted_lines(content: &str) -> String {
         "alterations:",
         "revisions:",
         "commit message",
-        "Sure,",
+        "sure,",
+        "here's the",
         "```diff",
         "```",
+        "this commit",
         // Common LLM meta-commentary starters
         "based on",
         "according to",
@@ -94,11 +96,7 @@ fn filter_unwanted_lines(content: &str) -> String {
         // Check if line starts with unwanted patterns (conservative approach)
         let should_filter = unwanted_start_patterns.iter().any(|pattern| {
             // Check if line starts with the pattern (case insensitive)
-            line_trimmed.starts_with(pattern) ||
-            // Check if pattern appears at the beginning after common prefixes
-            line_trimmed.starts_with(&format!("- {}", pattern)) ||
-            line_trimmed.starts_with(&format!("* {}", pattern)) ||
-            line_trimmed.starts_with(&format!("• {}", pattern))
+            line_trimmed.contains(pattern) 
         });
         
         // Special case: filter "this commit" lines that contain meta-commentary
